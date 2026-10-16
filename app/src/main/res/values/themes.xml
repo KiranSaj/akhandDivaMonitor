@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DiyaMonitor" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/deep_orange</item>
+        <item name="colorSecondary">@color/saffron</item>
+    </style>
+
+    <style name="ActionButton" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginHorizontal">3dp</item>
+        <item name="android:paddingHorizontal">4dp</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>

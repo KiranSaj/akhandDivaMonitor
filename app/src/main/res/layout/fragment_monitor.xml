@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#000000">
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/previewView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <com.kiransaj.diyamonitor.ui.RoiOverlayView
+            android:id="@+id/roiOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_margin="6dp"
+            android:background="#88000000"
+            android:padding="4dp"
+            android:text="@string/roi_hint"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+    </FrameLayout>
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/txtReadout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:paddingHorizontal="12dp"
+        android:paddingTop="6dp"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/txtMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp"
+        android:textSize="12sp"
+        android:textStyle="italic" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="4dp">
+
+        <Button
+            android:id="@+id/btnCalibrate"
+            style="@style/ActionButton"
+            android:text="@string/calibrate" />
+
+        <Button
+            android:id="@+id/btnStart"
+            style="@style/ActionButton"
+            android:text="@string/start" />
+
+        <Button
+            android:id="@+id/btnStop"
+            style="@style/ActionButton"
+            android:text="@string/stop" />
+
+        <Button
+            android:id="@+id/btnNight"
+            style="@style/ActionButton"
+            android:text="@string/night" />
+    </LinearLayout>
+</LinearLayout>
