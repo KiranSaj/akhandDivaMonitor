@@ -4,13 +4,21 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.kiransaj.diyamonitor.data.Prefs
 import com.kiransaj.diyamonitor.databinding.FragmentSettingsBinding
+import com.kiransaj.diyamonitor.service.Mode
+import com.kiransaj.diyamonitor.service.MonitorState
+import com.kiransaj.diyamonitor.update.AppUpdater
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.reflect.KMutableProperty0
 
 class SettingsFragment : Fragment() {
@@ -48,6 +56,78 @@ class SettingsFragment : Fragment() {
         switch(c, "Quiet test mode (silent Telegram, [TEST] prefix, all timings ×0.1)", p::testMode)
 
         note(c, "Changes take effect the next time you press Start.")
+
+        header(c, "App updates")
+        updateSection(c)
+    }
+
+    /** Two-step flow: "Check for update" finds a newer release, then the same button downloads and installs it. */
+    private fun updateSection(parent: LinearLayout) {
+        val updater = AppUpdater(requireContext())
+        parent.addView(TextView(requireContext()).apply { text = "Installed version: ${updater.currentVersion}" })
+        val status = TextView(requireContext()).apply { setPadding(0, dp(8), 0, dp(8)) }
+        val button = Button(requireContext()).apply { text = "Check for update" }
+        parent.addView(button)
+        parent.addView(status)
+
+        var pending: AppUpdater.Release? = null
+        var busy = false
+
+        fun background(work: suspend () -> Unit) {
+            busy = true
+            button.isEnabled = false
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    work()
+                } catch (e: Exception) {
+                    status.text = "❌ ${e.message ?: e.javaClass.simpleName}"
+                } finally {
+                    busy = false
+                    button.isEnabled = true
+                }
+            }
+        }
+
+        button.setOnClickListener {
+            if (busy) return@setOnClickListener
+            if (MonitorState.mode.value == Mode.MONITORING) {
+                status.text = "Stop monitoring first: installing an update restarts the app."
+                return@setOnClickListener
+            }
+            val release = pending
+            if (release == null) {
+                status.text = "Checking…"
+                background {
+                    val latest = withContext(Dispatchers.IO) { updater.latestRelease() }
+                    if (latest != null && updater.isNewer(latest)) {
+                        pending = latest
+                        button.text = "Download and install ${latest.version}"
+                    }
+                    status.text = when {
+                        latest == null -> "No release has been published yet."
+                        !updater.isNewer(latest) -> "✅ You have the latest version (${updater.currentVersion})."
+                        else -> buildString {
+                            append("⬆️ Version ${latest.version} is available.")
+                            if (latest.notes.isNotBlank()) append("\n\nWhat's new:\n${latest.notes}")
+                        }
+                    }
+                }
+            } else if (!updater.canInstall()) {
+                status.text = "Allow Diya Monitor to install updates (switch on \"Allow from this source\"), then come back and press the button again."
+                startActivity(updater.installPermissionIntent())
+            } else {
+                status.text = "Downloading ${release.version}…"
+                background {
+                    val apk = withContext(Dispatchers.IO) {
+                        updater.download(release) { pct ->
+                            status.post { status.text = "Downloading ${release.version}… $pct%" }
+                        }
+                    }
+                    status.text = "Downloaded. Tap \"Install\" on the next screen. Your settings are kept."
+                    updater.install(apk)
+                }
+            }
+        }
     }
 
     private fun header(parent: LinearLayout, text: String) {

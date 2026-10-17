@@ -131,7 +131,8 @@ class FlameAnalyzer(
                 val since = conditionSince.getOrPut(type) { now }
                 if (type !in active && now - since >= duration) active += type
                 if (type in active) {
-                    if (type !in notified && cooldown.canFire(type, now)) {
+                    // A new urgent incident (e.g. out again after a relight) must not wait for the cooldown.
+                    if (type !in notified && (type.severity == Severity.URGENT || cooldown.canFire(type, now))) {
                         pending += type to false
                     } else if (type in notified && type.repeatWhileActive &&
                         now - (lastAlertAt[type] ?: now) >= config.cooldownMs

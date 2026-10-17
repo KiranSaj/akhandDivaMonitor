@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Log
+import com.kiransaj.diyamonitor.core.MessageStamp
 import com.kiransaj.diyamonitor.data.Prefs
 import com.kiransaj.diyamonitor.service.MonitorState
 import java.util.concurrent.LinkedBlockingDeque
@@ -51,7 +52,10 @@ class TelegramOutbox private constructor(context: Context) {
      */
     fun sendNow(text: String, timeoutMs: Long = 5_000) {
         val t = thread(name = "telegram-urgent") {
-            runCatching { client.sendMessage(prefs.botToken, prefs.chatId, text, prefs.testMode) }
+            runCatching {
+                val now = System.currentTimeMillis()
+                client.sendMessage(prefs.botToken, prefs.chatId, MessageStamp.stamp(text, now, now), prefs.testMode)
+            }
         }
         t.join(timeoutMs)
     }
@@ -98,12 +102,13 @@ class TelegramOutbox private constructor(context: Context) {
         val token = prefs.botToken
         val chat = prefs.chatId
         if (token.isBlank() || chat.isBlank()) throw TelegramException("Telegram is not set up", retryable = false)
+        val text = MessageStamp.stamp(item.text, item.createdAtMs, System.currentTimeMillis())
         if (item.photo != null) {
-            client.sendPhoto(token, chat, item.photo, item.text, prefs.testMode)
+            client.sendPhoto(token, chat, item.photo, text, prefs.testMode)
             // Captions are limited to 1024 chars; send the rest as text if needed.
-            if (item.text.length > 1000) client.sendMessage(token, chat, item.text.drop(1000), prefs.testMode)
+            if (text.length > 1000) client.sendMessage(token, chat, text.drop(1000), prefs.testMode)
         } else {
-            client.sendMessage(token, chat, item.text, prefs.testMode)
+            client.sendMessage(token, chat, text, prefs.testMode)
         }
     }
 

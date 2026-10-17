@@ -61,13 +61,27 @@ class FlameAnalyzerTest {
     }
 
     @Test
-    fun `cooldown suppresses repeated alert of the same type`() {
+    fun `cooldown suppresses repeated warning of the same type`() {
+        val s = Scenario()
+        s.run(3 * 60_000L) { 13.0 }
+        s.run(60_000) { 20.0 } // recovers
+        assertEquals(1, s.recoveries(AlertType.DIMMING).size)
+        s.run(3 * 60_000L) { 13.0 } // dim again within 15 min cooldown
+        assertEquals(1, s.alerts(AlertType.DIMMING).size)
+    }
+
+    @Test
+    fun `flame out again after a relight alerts immediately despite cooldown`() {
         val s = Scenario()
         s.run(60_000) { 0.0 }
-        s.run(60_000) { 20.0 } // recovers
+        s.run(60_000) { 20.0 } // relit, recovers
         assertEquals(1, s.recoveries(AlertType.FLAME_OUT).size)
-        s.run(60_000) { 0.0 } // out again within 15 min cooldown
-        assertEquals(1, s.alerts(AlertType.FLAME_OUT).size)
+        val start = s.nowMs
+        s.run(60_000) { 0.0 } // out again within 15 min
+        val out = s.alerts(AlertType.FLAME_OUT)
+        assertEquals(2, out.size)
+        assertTrue("second alert after ${out[1].first - start}ms", out[1].first - start in 28_000..34_000)
+        assertTrue("a new incident is not a reminder", !(out[1].second as DetectionEvent.Alert).reminder)
     }
 
     @Test

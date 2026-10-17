@@ -55,6 +55,17 @@ and under **Artifacts** download **diya-monitor-apk**. It is a zip that contains
 
 All builds are signed with the same key, so a newer APK installs over the old one and keeps your settings.
 
+### Updating the app (no laptop needed)
+
+After the first install, update from inside the app:
+
+1. Stop monitoring (installing an update restarts the app).
+2. **Settings → App updates → Check for update**. If a newer release exists, its changes are shown.
+3. Press **Download and install**, then tap **Install** on Android's screen.
+   The first time, Android asks you to **Allow from this source**. Switch it on and press the button again.
+
+The app also checks once a day when it is opened, and announces a new version in Telegram once.
+
 ## 4. Each night
 
 1. Place the phone (see tips below) and plug in the charger.

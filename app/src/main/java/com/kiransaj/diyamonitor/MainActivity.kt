@@ -22,9 +22,12 @@ import com.kiransaj.diyamonitor.ui.MonitorFragment
 import com.kiransaj.diyamonitor.ui.SettingsFragment
 import com.kiransaj.diyamonitor.ui.SetupFragment
 import com.kiransaj.diyamonitor.ui.Format
+import com.kiransaj.diyamonitor.update.AppUpdater
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -80,6 +83,29 @@ class MainActivity : AppCompatActivity() {
 
         requestPermissions()
         checkForInterruptedSession()
+        dailyUpdateCheck()
+    }
+
+    /** At most once a day: look for a newer release, show a hint and announce it on Telegram once. */
+    private fun dailyUpdateCheck() {
+        val now = System.currentTimeMillis()
+        if (now - prefs.lastUpdateCheckMs < AppUpdater.DAILY_CHECK_MS) return
+        lifecycleScope.launch {
+            val updater = AppUpdater(this@MainActivity)
+            val latest = withContext(Dispatchers.IO) { runCatching { updater.latestRelease() }.getOrNull() }
+                ?: return@launch
+            prefs.lastUpdateCheckMs = now
+            if (!updater.isNewer(latest)) return@launch
+            Toast.makeText(this@MainActivity, "Update ${latest.version} available: Settings → Check for update", Toast.LENGTH_LONG).show()
+            if (prefs.announcedUpdateVersion != latest.version && prefs.telegramConfigured) {
+                prefs.announcedUpdateVersion = latest.version
+                val notes = latest.notes.take(800).ifBlank { null }?.let { "\n\nWhat's new:\n$it" }.orEmpty()
+                TelegramOutbox.get(this@MainActivity).enqueue(
+                    "⬆️ Diya Monitor ${latest.version} is available (installed: ${updater.currentVersion}).\n" +
+                        "When monitoring is stopped, open the app → Settings → Check for update.$notes"
+                )
+            }
+        }
     }
 
     fun show(itemId: Int) {

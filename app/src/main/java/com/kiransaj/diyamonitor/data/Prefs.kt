@@ -43,6 +43,16 @@ class Prefs(context: Context) {
     /** True while the user wants monitoring running; used to detect unexpected stops. */
     var monitoringActive by boolPref("monitoringActive", false)
 
+    // --- App updates ---
+    var lastUpdateCheckMs: Long
+        get() = sp.getLong("lastUpdateCheckMs", 0L)
+        set(v) = sp.edit { putLong("lastUpdateCheckMs", v) }
+
+    /** The newest release version already announced on Telegram, so it is announced only once. */
+    var announcedUpdateVersion: String
+        get() = sp.getString("announcedUpdateVersion", "")!!
+        set(v) = sp.edit { putString("announcedUpdateVersion", v) }
+
     var roi: NormRect
         get() = if (!sp.contains("roiL")) NormRect.DEFAULT else NormRect(
             sp.getFloat("roiL", 0f), sp.getFloat("roiT", 0f), sp.getFloat("roiR", 1f), sp.getFloat("roiB", 1f),

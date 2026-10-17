@@ -13,8 +13,14 @@ android {
         applicationId = "com.kiransaj.diyamonitor"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // CI: the run number always increases, so every build can install over the previous one.
+        // A v* tag (e.g. v1.2.0) sets the version name that the in-app updater compares against.
+        val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        val tagVersion = System.getenv("GITHUB_REF_NAME")
+            ?.takeIf { System.getenv("GITHUB_REF_TYPE") == "tag" && it.startsWith("v") }
+            ?.removePrefix("v")
+        versionCode = runNumber ?: 1
+        versionName = tagVersion ?: "0.0.0-dev.${runNumber ?: 0}"
     }
 
     signingConfigs {
@@ -37,6 +43,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     compileOptions {
