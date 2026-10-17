@@ -42,7 +42,9 @@ class TelegramClient(
 
     /** Returns the most recent chat (id to title) that messaged the bot, or null if none. */
     fun findLatestChat(token: String): Pair<String, String>? {
-        val json = call(token, "getUpdates", FormBody.Builder().build())
+        // offset=-1 returns only the newest update; without it Telegram returns the oldest
+        // 100 unconfirmed ones, so a recent message from a new chat could be missed.
+        val json = call(token, "getUpdates", FormBody.Builder().add("offset", "-1").build())
         val results = json.optJSONArray("result") ?: return null
         for (i in results.length() - 1 downTo 0) {
             val update = results.getJSONObject(i)
