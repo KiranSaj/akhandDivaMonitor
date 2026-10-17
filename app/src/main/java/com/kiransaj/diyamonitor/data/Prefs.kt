@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.kiransaj.diyamonitor.core.Baseline
 import com.kiransaj.diyamonitor.core.DetectionConfig
+import com.kiransaj.diyamonitor.core.FlameRegion
 import com.kiransaj.diyamonitor.core.NormRect
 
 /** All persistent settings, backed by SharedPreferences. */
@@ -53,14 +54,47 @@ class Prefs(context: Context) {
         get() = sp.getString("announcedUpdateVersion", "")!!
         set(v) = sp.edit { putString("announcedUpdateVersion", v) }
 
-    var roi: NormRect
-        get() = if (!sp.contains("roiL")) NormRect.DEFAULT else NormRect(
-            sp.getFloat("roiL", 0f), sp.getFloat("roiT", 0f), sp.getFloat("roiR", 1f), sp.getFloat("roiB", 1f),
-        )
-        set(r) = sp.edit {
-            putFloat("roiL", r.left); putFloat("roiT", r.top); putFloat("roiR", r.right); putFloat("roiB", r.bottom)
+    // --- Flames ---
+    /** How many wicks the lamp has (all expected to burn). */
+    var expectedFlames by intPref("expectedFlames", 2)
+    var exposureLock by boolPref("exposureLock", true)
+    /** Exposure compensation applied before locking, in tenths of an EV step (-15 = -1.5 EV). */
+    var exposureEvTenths by intPref("exposureEvTenths", -15)
+
+    /** The watched flame boxes, as "left,top,right,bottom,anchorX,anchorY;…". */
+    var flames: List<FlameRegion>
+        get() = sp.getString("flames", "")!!.split(';').mapNotNull { item ->
+            val v = item.split(',').mapNotNull { it.toFloatOrNull() }
+            if (v.size == 6) FlameRegion(NormRect(v[0], v[1], v[2], v[3]), v[4], v[5]) else null
+        }
+        set(list) = sp.edit {
+            putString("flames", list.joinToString(";") { f ->
+                listOf(f.box.left, f.box.top, f.box.right, f.box.bottom, f.anchorX, f.anchorY).joinToString(",")
+            })
         }
 
+    /** Normal readings for each flame, in the same order as [flames]. */
+    var flameBaselines: List<Baseline>
+        get() = sp.getString("flameBaselines", "")!!.split(';').mapNotNull { item ->
+            val v = item.split(',')
+            if (v.size != 5) return@mapNotNull null
+            val d = v.take(4).map { it.toDoubleOrNull() ?: return@mapNotNull null }
+            Baseline(d[0], d[1], d[2], d[3], v[4].toIntOrNull() ?: 0)
+        }
+        set(list) = sp.edit {
+            putString("flameBaselines", list.joinToString(";") { b ->
+                "${b.areaPct},${b.brightness},${b.aboveLuma},${b.flickerCv},${b.samples}"
+            })
+        }
+
+    // --- Screen ---
+    /** Minutes after the last touch before the screen may turn off while monitoring (0 = never). */
+    var screenOffMinutes by intPref("screenOffMinutes", 2)
+    /** Nights on which the camera paused with the screen off; auto-off is disabled from 2. */
+    var screenOffFailures by intPref("screenOffFailures", 0)
+    val screenAutoOffEnabled: Boolean get() = screenOffMinutes > 0 && screenOffFailures < 2
+
+    /** Baseline of both flames combined, used by the lamp-level alerts. */
     var baseline: Baseline?
         get() = if (!sp.contains("blArea")) null else Baseline(
             areaPct = sp.getFloat("blArea", 0f).toDouble(),

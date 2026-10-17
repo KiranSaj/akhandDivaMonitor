@@ -6,14 +6,16 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class TelegramException(message: String, val retryable: Boolean) : IOException(message)
 
-/** Minimal Telegram Bot API client (sendMessage, sendPhoto, getUpdates). Blocking; call off the main thread. */
+/** Minimal Telegram Bot API client (sendMessage, sendPhoto, sendDocument, getUpdates). Blocking; call off the main thread. */
 class TelegramClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -38,6 +40,48 @@ class TelegramClient(
             .addFormDataPart("photo", "diya.jpg", jpeg.toRequestBody("image/jpeg".toMediaType()))
             .build()
         call(token, "sendPhoto", body)
+    }
+
+    fun sendDocument(token: String, chatId: String, file: File, caption: String, silent: Boolean = false) {
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("chat_id", chatId)
+            .addFormDataPart("caption", caption.take(1000))
+            .addFormDataPart("disable_notification", silent.toString())
+            .addFormDataPart("document", file.name, file.asRequestBody("application/zip".toMediaType()))
+            .build()
+        call(token, "sendDocument", body)
+    }
+
+    /** A text message the bot received. */
+    data class Incoming(val updateId: Long, val chatId: String, val text: String)
+
+    /**
+     * Long-polls for new messages from [offset] (the last seen update id + 1), waiting up to
+     * [timeoutSec] (keep it below the read timeout). Fetched updates are confirmed to Telegram.
+     */
+    fun getUpdates(token: String, offset: Long, timeoutSec: Int = 20): List<Incoming> {
+        val body = FormBody.Builder()
+            .add("offset", offset.toString())
+            .add("timeout", timeoutSec.toString())
+            .add("allowed_updates", "[\"message\"]")
+            .build()
+        val results = call(token, "getUpdates", body).optJSONArray("result") ?: return emptyList()
+        return (0 until results.length()).map { i ->
+            val update = results.getJSONObject(i)
+            val msg = update.optJSONObject("message")
+            Incoming(
+                updateId = update.getLong("update_id"),
+                chatId = msg?.optJSONObject("chat")?.opt("id")?.toString().orEmpty(),
+                text = msg?.optString("text").orEmpty(),
+            )
+        }
+    }
+
+    /** Id of the newest pending update, or null if there is none; used to skip old commands. */
+    fun latestUpdateId(token: String): Long? {
+        val results = call(token, "getUpdates", FormBody.Builder().add("offset", "-1").build()).optJSONArray("result")
+        if (results == null || results.length() == 0) return null
+        return results.getJSONObject(results.length() - 1).getLong("update_id")
     }
 
     /** Returns the most recent chat (id to title) that messaged the bot, or null if none. */

@@ -15,8 +15,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <com.kiransaj.diyamonitor.ui.RoiOverlayView
-            android:id="@+id/roiOverlay"
+        <com.kiransaj.diyamonitor.ui.FlameOverlayView
+            android:id="@+id/flameOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 

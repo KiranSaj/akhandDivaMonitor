@@ -6,8 +6,8 @@
     <string name="tab_monitor">Monitor</string>
     <string name="tab_settings">Settings</string>
 
-    <string name="roi_hint">Drag a box around the flame</string>
-    <string name="calibrate">Calibrate</string>
+    <string name="roi_hint">Start finds the flames itself · tap a flame to add or remove it</string>
+    <string name="calibrate">Find flames</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
     <string name="night">Night</string>
@@ -21,7 +21,7 @@
     <string name="send_test">Send test</string>
 
     <string name="battery_title">Run all night</string>
-    <string name="battery_explanation">Android\'s battery optimisation can pause apps overnight, which would silently stop monitoring. Allow Diya Monitor to ignore battery optimisation so the camera and alerts keep running for 8–9 hours. Keep the phone plugged in.</string>
+    <string name="battery_explanation">Android\'s battery optimisation can pause apps overnight, which would silently stop monitoring. Allow Diya Monitor to ignore battery optimisation so the camera and alerts keep running all night. Keep the phone plugged in.\n\nOn Samsung phones also: Settings → Device care → Auto optimisation → turn OFF automatic restart (otherwise the phone may reboot at night), and Settings → Battery → Background usage limits → make sure Diya Monitor is not in \"Sleeping apps\" or \"Deep sleeping apps\".</string>
     <string name="battery_button">Allow background running</string>
     <string name="safety_note">⚠️ This is a convenience monitor, not a fire-safety device. Keep a smoke alarm nearby and place the diya on a metal tray away from curtains and anything flammable.</string>
 </resources>

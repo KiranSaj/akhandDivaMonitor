@@ -68,24 +68,44 @@ The app also checks once a day when it is opened, and announces a new version in
 
 ## 4. Each night
 
-1. Place the phone (see tips below) and plug in the charger.
-2. **Monitor** tab: drag a box tightly around the flame. The dashed box above it is the "soot zone".
-3. Press **Calibrate** and keep everything still for 60 s while a normal, healthy flame burns.
-4. Press **Start**. A "monitoring started" message with a photo arrives in Telegram.
-5. Press **Night** for a black screen at minimum brightness. The screen stays on so the camera keeps running. Double-tap to leave night mode.
+1. Place the phone (see tips below) and plug in the charger. Let the flames settle for a few minutes after lighting or trimming.
+2. **Monitor** tab → press **Start** and keep everything still for about 75 s. The app:
+   - darkens and locks the camera exposure,
+   - **finds the flames by itself** (numbered orange boxes) — reflections in the brass and the oil are ignored,
+   - learns each flame's normal size (60 s), then starts monitoring.
 
-If you move the phone or the diya, draw the box again and recalibrate.
+   A "monitoring started" message arrives in Telegram with a photo of the numbered boxes. Check that they sit on the flames.
+3. Leave the phone. After **2 minutes without a touch the screen turns off** (Settings → Screen); monitoring continues with the screen off.
+
+**Wrong or missing box?** Press **Find flames** (finds and calibrates without starting), then **tap a wrong box to remove it**
+and **tap a missed flame to add it**. Press **Start**: it keeps your boxes and only re-learns their size.
+
+**Moved the phone or the lamp?** Small drifts are followed automatically. If everything moves, the app finds the flames again
+by itself within about a minute and tells you in Telegram.
+
+**From Telegram while monitoring:** send `/status` for a photo and current readings, or `/log` for tonight's log.
+
+**Screen safety net:** if the camera stops while the screen is off (some phones do this), the app wakes the screen,
+keeps it on (dark) for the rest of the night and tells you. After this happens on 2 nights, screen auto-off is switched off;
+change the setting to try again.
 
 ### Camera placement tips
-- Put the phone **30–50 cm** from the diya, on a stand or propped up so it **cannot move**. Any shift invalidates the calibration.
-- Place it **side-on, at about flame height**, so the area just above the flame is visible (that's where soot and smoke show up).
-- A plain, dim wall behind the flame works best. Avoid windows, TVs and other lights in the frame.
+- Put the phone **30–50 cm** from the diya, on a stand or propped up so it **cannot move**.
+- Place it **slightly above the flames**, so both flames and the area just above them are visible (that's where soot and smoke show up).
+- A plain, dim background works best. Avoid windows, TVs and other lights in the frame.
 - Keep the phone **plugged in** and away from the heat of the flame.
 
 ### Settings
-- **Sensitivity**: thresholds for out / dim / oversize / flicker / low-oil, and the bright-pixel threshold. If calibration says "no flame found", lower the bright-pixel threshold and recalibrate.
+- **Lamp & camera**: number of flames (default 2), exposure lock and how much to darken before locking (default −1.5 EV). Photos look darker; that is expected.
+- **Screen**: turn the screen off after 1 / 2 / 5 / 10 minutes without a touch, or never.
+- **Sensitivity**: thresholds for out / dim / oversize / flicker / low-oil, and the bright-pixel threshold. If "no flame found", lower the bright-pixel threshold, or tap the flames by hand.
 - **Timing**: check interval (default 2 s), per-alert cooldown, heartbeat.
+- **Night logs**: every monitoring session is recorded (one row per check + a photo every 15 min and at every alert; the last 7 nights are kept). **Send latest log to Telegram** sends it as a zip; save it into this repository's `logs/` folder to tune the detection.
 - **Quiet test mode**: Telegram messages arrive silently, prefixed with `[TEST]`, and all timings are ×0.1 (flame-out after 3 s, dimming after 12 s, calibration in 15 s), so you can test by covering or blowing out a candle.
+
+> **Current alerts (v1.2):** the alerts in the table at the top work on **both flames combined**. If only one of two flames goes out,
+> the combined size halves and you get **Dimming** after 2 minutes, not "flame out". Separate alerts for each flame, oil-level
+> estimates and night-time quiet hours come in the next version (see [docs/DESIGN.md](docs/DESIGN.md)).
 
 Settings apply the next time you press **Start**.
 

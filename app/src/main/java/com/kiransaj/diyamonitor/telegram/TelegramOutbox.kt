@@ -7,6 +7,7 @@ import android.util.Log
 import com.kiransaj.diyamonitor.core.MessageStamp
 import com.kiransaj.diyamonitor.data.Prefs
 import com.kiransaj.diyamonitor.service.MonitorState
+import java.io.File
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -19,7 +20,12 @@ import kotlin.concurrent.thread
  */
 class TelegramOutbox private constructor(context: Context) {
 
-    data class Outgoing(val text: String, val photo: ByteArray?, val createdAtMs: Long = System.currentTimeMillis())
+    data class Outgoing(
+        val text: String,
+        val photo: ByteArray?,
+        val createdAtMs: Long = System.currentTimeMillis(),
+        val document: File? = null,
+    )
 
     private val prefs = Prefs(context)
     private val client = TelegramClient()
@@ -43,6 +49,14 @@ class TelegramOutbox private constructor(context: Context) {
         val prefixed = if (prefs.testMode) "[TEST] $text" else text
         while (queue.size >= MAX_QUEUE) queue.pollFirst()
         queue.offerLast(Outgoing(prefixed, photo))
+        MonitorState.queueSize.value = queue.size
+    }
+
+    /** Queues a file (e.g. a zipped night log) with a caption. */
+    fun enqueueDocument(file: File, caption: String) {
+        val prefixed = if (prefs.testMode) "[TEST] $caption" else caption
+        while (queue.size >= MAX_QUEUE) queue.pollFirst()
+        queue.offerLast(Outgoing(prefixed, photo = null, document = file))
         MonitorState.queueSize.value = queue.size
     }
 
@@ -103,7 +117,10 @@ class TelegramOutbox private constructor(context: Context) {
         val chat = prefs.chatId
         if (token.isBlank() || chat.isBlank()) throw TelegramException("Telegram is not set up", retryable = false)
         val text = MessageStamp.stamp(item.text, item.createdAtMs, System.currentTimeMillis())
-        if (item.photo != null) {
+        if (item.document != null) {
+            if (!item.document.exists()) throw TelegramException("File no longer exists: ${item.document.name}", retryable = false)
+            client.sendDocument(token, chat, item.document, text, prefs.testMode)
+        } else if (item.photo != null) {
             client.sendPhoto(token, chat, item.photo, text, prefs.testMode)
             // Captions are limited to 1024 chars; send the rest as text if needed.
             if (text.length > 1000) client.sendMessage(token, chat, text.drop(1000), prefs.testMode)

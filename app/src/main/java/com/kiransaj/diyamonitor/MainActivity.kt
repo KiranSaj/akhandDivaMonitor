@@ -3,6 +3,8 @@ package com.kiransaj.diyamonitor
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -37,6 +39,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: Prefs
     private var lastNightTap = 0L
+    private val screenHandler = Handler(Looper.getMainLooper())
+    /** True once the screen-off delay has passed without a touch. */
+    private var screenIdle = false
+    private val screenIdleRunnable = Runnable {
+        screenIdle = true
+        updateKeepScreenOn()
+    }
 
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         // Re-create the current screen so it can pick up a newly granted camera permission.
@@ -51,6 +60,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             show(item.itemId)
+            binding.bottomNav.post { updateKeepScreenOn() }
             true
         }
         if (savedInstanceState == null) {
@@ -81,9 +91,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // These run even while the activity is stopped (screen off), so a forced wake-up can take effect.
+        lifecycleScope.launch { MonitorState.mode.collect { armScreenTimer() } }
+        lifecycleScope.launch { MonitorState.forceScreenOn.collect { applyForcedScreen(it) } }
+
         requestPermissions()
         checkForInterruptedSession()
         dailyUpdateCheck()
+    }
+
+    override fun onDestroy() {
+        screenHandler.removeCallbacks(screenIdleRunnable)
+        super.onDestroy()
     }
 
     /** At most once a day: look for a newer release, show a hint and announce it on Telegram once. */
@@ -123,14 +142,59 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.selectedItemId = itemId
     }
 
-    /** Black overlay, minimum brightness, screen kept on so the camera keeps running. */
+    /** Black overlay at minimum brightness. Whether the screen stays on is decided by [updateKeepScreenOn]. */
     fun setNightMode(on: Boolean) {
         binding.nightOverlay.visibility = if (on) View.VISIBLE else View.GONE
         binding.bottomNav.visibility = if (on) View.GONE else View.VISIBLE
         window.attributes = window.attributes.apply {
             screenBrightness = if (on) 0.01f else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
-        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        updateKeepScreenOn()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        armScreenTimer()
+    }
+
+    /** Restarts the "turn the screen off after N minutes" countdown (only while monitoring). */
+    private fun armScreenTimer() {
+        screenIdle = false
+        screenHandler.removeCallbacks(screenIdleRunnable)
+        if (MonitorState.mode.value == Mode.MONITORING && prefs.screenAutoOffEnabled) {
+            screenHandler.postDelayed(screenIdleRunnable, prefs.screenOffMinutes * 60_000L)
+        }
+        updateKeepScreenOn()
+    }
+
+    /**
+     * Screen policy: always on while finding/calibrating or when forced (the camera paused with the
+     * screen off). While monitoring, on until N minutes after the last touch, then the phone's own
+     * timeout turns it off and locks it. Otherwise on while the Monitor tab is shown.
+     */
+    fun updateKeepScreenOn() {
+        val mode = MonitorState.mode.value
+        val keepOn = when {
+            MonitorState.forceScreenOn.value -> true
+            mode == Mode.MONITORING -> !(prefs.screenAutoOffEnabled && screenIdle)
+            mode == Mode.FINDING || mode == Mode.CALIBRATING -> true
+            else -> binding.bottomNav.selectedItemId == R.id.nav_monitor
+        }
+        if (keepOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    /** After a camera pause with the screen off: show over the lock screen, wake up, stay on and dark. */
+    @Suppress("DEPRECATION")
+    private fun applyForcedScreen(on: Boolean) {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(on)
+            setTurnScreenOn(on)
+        } else {
+            val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            if (on) window.addFlags(flags) else window.clearFlags(flags)
+        }
+        if (on) setNightMode(true) else updateKeepScreenOn()
     }
 
     private fun requestPermissions() {
@@ -145,7 +209,8 @@ class MainActivity : AppCompatActivity() {
         if (!prefs.monitoringActive) return
         lifecycleScope.launch {
             delay(5_000) // give a system-restarted service a chance to come up first
-            if (prefs.monitoringActive && MonitorState.mode.value != Mode.MONITORING) {
+            val running = MonitorState.mode.value in setOf(Mode.MONITORING, Mode.FINDING, Mode.CALIBRATING)
+            if (prefs.monitoringActive && !running) {
                 prefs.monitoringActive = false
                 TelegramOutbox.get(this@MainActivity).enqueue(
                     "⚠️ Diya Monitor: monitoring was interrupted (the app was closed or killed). Press Start in the app to resume."

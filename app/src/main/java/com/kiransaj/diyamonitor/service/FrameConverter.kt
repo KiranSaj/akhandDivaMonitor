@@ -2,8 +2,11 @@ package com.kiransaj.diyamonitor.service
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.ImageFormat
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.YuvImage
 import androidx.camera.core.ImageProxy
@@ -62,10 +65,14 @@ class FrameConverter {
         return LumaFrame(outW, outH, luma, chroma)
     }
 
-    /** JPEG of the latest frame cropped to [upright] (normalised, upright coordinates), rotated upright. */
-    fun jpeg(upright: NormRect, quality: Int = 85): ByteArray? {
+    /**
+     * JPEG of the latest frame cropped to [upright] (normalised, upright coordinates), rotated upright.
+     * [boxes] (upright coordinates of the whole image) are outlined and numbered, e.g. the watched flames.
+     */
+    fun jpeg(upright: NormRect, boxes: List<NormRect> = emptyList(), quality: Int = 85): ByteArray? {
         if (!hasFrame) return null
-        val raw = Rotation.uprightRectToRaw(upright.clamped(), rotation)
+        val area = upright.clamped()
+        val raw = Rotation.uprightRectToRaw(area, rotation)
         val left = ((raw.left * width).toInt() and 1.inv()).coerceIn(0, width - 2)
         val top = ((raw.top * height).toInt() and 1.inv()).coerceIn(0, height - 2)
         val right = (raw.right * width).toInt().coerceIn(left + 2, width)
@@ -73,14 +80,31 @@ class FrameConverter {
         val cropped = ByteArrayOutputStream()
         YuvImage(nv21, ImageFormat.NV21, width, height, null).compressToJpeg(Rect(left, top, right, bottom), 95, cropped)
         val bytes = cropped.toByteArray()
-        if (rotation == 0) return bytes
+        if (rotation == 0 && boxes.isEmpty()) return bytes
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
-        val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(rotation.toFloat()) }, true)
+        val upright0 = if (rotation == 0) bmp else Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(rotation.toFloat()) }, true)
+        val result = if (boxes.isEmpty()) upright0 else upright0.copy(Bitmap.Config.ARGB_8888, true).also { drawBoxes(it, area, boxes) }
         val out = ByteArrayOutputStream()
-        rotated.compress(Bitmap.CompressFormat.JPEG, quality, out)
-        if (rotated !== bmp) rotated.recycle()
-        bmp.recycle()
+        result.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        listOf(bmp, upright0, result).distinct().forEach { it.recycle() }
         return out.toByteArray()
+    }
+
+    private fun drawBoxes(bitmap: Bitmap, area: NormRect, boxes: List<NormRect>) {
+        val canvas = Canvas(bitmap)
+        val scale = bitmap.width / 160f
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = scale; color = Color.rgb(255, 170, 0)
+        }
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(255, 170, 0); textSize = 10 * scale; isFakeBoldText = true
+        }
+        fun x(v: Float) = (v - area.left) / area.width * bitmap.width
+        fun y(v: Float) = (v - area.top) / area.height * bitmap.height
+        boxes.forEachIndexed { i, b ->
+            canvas.drawRect(x(b.left), y(b.top), x(b.right), y(b.bottom), stroke)
+            canvas.drawText("${i + 1}", x(b.left) + scale, y(b.top) - 2 * scale, text)
+        }
     }
 
     private fun copyToNv21(image: ImageProxy) {

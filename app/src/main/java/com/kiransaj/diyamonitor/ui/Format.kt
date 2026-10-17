@@ -8,8 +8,9 @@ object Format {
     fun short(mode: Mode, live: LiveReading?): String {
         val s = live?.snapshot
         return when {
-            mode == Mode.MONITORING && s != null -> "${s.status} · area ${(s.areaRatio * 100).toInt()}%"
-            mode == Mode.CALIBRATING -> "calibrating ${((live?.calibrationProgress ?: 0f) * 100).toInt()}%"
+            mode == Mode.MONITORING && s != null -> "${s.status} · " + flames(live).ifEmpty { "area ${(s.areaRatio * 100).toInt()}%" }
+            mode == Mode.FINDING -> "finding flames ${progress(live)}"
+            mode == Mode.CALIBRATING -> "learning normal size ${progress(live)}"
             else -> mode.name.lowercase()
         }
     }
@@ -24,18 +25,27 @@ object Format {
             append("Waiting for camera…")
             return@buildString
         }
-        append("Flame area: %.2f%% of box".format(m.areaPct))
-        if (baseline != null) append(" (%d%% of baseline)".format((m.areaPct / baseline.areaPct * 100).toInt()))
+        if (mode == Mode.FINDING || mode == Mode.CALIBRATING) {
+            append(if (mode == Mode.FINDING) "Finding the flames… " else "Learning their normal size… ")
+            append(progress(live))
+            return@buildString
+        }
+        flames(live).takeIf { it.isNotEmpty() }?.let { append("Flames vs normal: $it\n") }
+        append("Both flames: %.2f%% of boxes".format(m.areaPct))
+        if (baseline != null && baseline.areaPct > 0) append(" (%d%% of normal)".format((m.areaPct / baseline.areaPct * 100).toInt()))
         append('\n')
-        append("Brightness: %.0f".format(m.brightness))
-        if (baseline != null && baseline.brightness > 0) append(" (%d%%)".format((m.brightness / baseline.brightness * 100).toInt()))
-        append("   Warmth: %.0f".format(m.warmth))
+        append("Brightness: %.0f   Warmth: %.0f   Height: %.0f%%".format(m.brightness, m.warmth, m.heightPct))
         append('\n')
         append("Flicker score: ${if (s != null) "%.2f".format(s.flickerScore) else "–"}")
         if (baseline != null) append(" (normal %.2f)".format(baseline.flickerCv))
         s?.trendDecline?.let { append("\n30-min trend: %+d%%".format((-it * 100).toInt())) }
         if (s != null && s.activeAlerts.isNotEmpty()) append("\nActive: ${s.activeAlerts.joinToString { it.name }}")
-        live?.calibrationProgress?.let { append("\nCalibrating: ${(it * 100).toInt()}%") }
-        if (baseline == null) append("\nNot calibrated yet.")
+        if (baseline == null) append("\nNot set up yet: press Start (or Find flames).")
     }
+
+    /** "1: 98%  2: 103%" */
+    private fun flames(live: LiveReading?): String =
+        live?.flameRatios.orEmpty().mapIndexed { i, r -> "${i + 1}: ${(r * 100).toInt()}%" }.joinToString("  ")
+
+    private fun progress(live: LiveReading?) = "${((live?.calibrationProgress ?: 0f) * 100).toInt()}%"
 }

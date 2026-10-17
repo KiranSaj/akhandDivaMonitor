@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -15,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.kiransaj.diyamonitor.MainActivity
 import com.kiransaj.diyamonitor.R
+import com.kiransaj.diyamonitor.core.FlameRegion
 import com.kiransaj.diyamonitor.data.Prefs
 import com.kiransaj.diyamonitor.databinding.FragmentMonitorBinding
 import com.kiransaj.diyamonitor.service.Mode
@@ -22,6 +22,8 @@ import com.kiransaj.diyamonitor.service.MonitorService
 import com.kiransaj.diyamonitor.service.MonitorState
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
 
 class MonitorFragment : Fragment() {
 
@@ -48,16 +50,9 @@ class MonitorFragment : Fragment() {
         MonitorService.send(requireContext(), MonitorService.ACTION_PREVIEW)
         MonitorState.previewSurface.value = binding.previewView.surfaceProvider
 
-        MonitorState.roi.value = prefs.roi
-        binding.roiOverlay.roi = prefs.roi
-        binding.roiOverlay.onRoiChanged = { roi ->
-            MonitorState.roi.value = roi
-            prefs.roi = roi
-            prefs.baseline = null
-            MonitorState.message.value = "Box changed — press Calibrate (takes 60 s)."
-        }
+        binding.flameOverlay.onTap = { x, y -> onPreviewTapped(x, y) }
 
-        binding.btnCalibrate.setOnClickListener { MonitorService.send(requireContext(), MonitorService.ACTION_CALIBRATE) }
+        binding.btnCalibrate.setOnClickListener { MonitorService.send(requireContext(), MonitorService.ACTION_FIND) }
         binding.btnStart.setOnClickListener {
             if (!prefs.telegramConfigured) {
                 MonitorState.message.value = "Set up Telegram first (Setup tab)."
@@ -74,16 +69,17 @@ class MonitorFragment : Fragment() {
                 launch {
                     combine(MonitorState.mode, MonitorState.live) { mode, live -> mode to live }.collect { (mode, live) ->
                         binding.txtReadout.text = Format.long(mode, live, prefs.baseline)
-                        val calibrated = prefs.baseline != null
+                        val busy = mode == Mode.FINDING || mode == Mode.CALIBRATING
                         binding.btnCalibrate.isEnabled = mode == Mode.PREVIEW
-                        binding.btnStart.isEnabled = mode == Mode.PREVIEW && calibrated
-                        binding.btnStop.isEnabled = mode == Mode.MONITORING
-                        binding.roiOverlay.editable = mode == Mode.PREVIEW
-                        val p = live?.calibrationProgress
-                        binding.progress.visibility = if (mode == Mode.CALIBRATING) View.VISIBLE else View.GONE
-                        binding.progress.progress = ((p ?: 0f) * 100).toInt()
+                        binding.btnStart.isEnabled = mode == Mode.PREVIEW
+                        binding.btnStop.isEnabled = mode == Mode.MONITORING || busy
+                        binding.flameOverlay.editable = mode == Mode.PREVIEW
+                        binding.progress.visibility = if (busy) View.VISIBLE else View.GONE
+                        binding.progress.progress = ((live?.calibrationProgress ?: 0f) * 100).toInt()
                     }
                 }
+                launch { MonitorState.flames.collect { binding.flameOverlay.flames = it } }
+                launch { MonitorState.blobs.collect { binding.flameOverlay.blobs = it } }
                 launch {
                     combine(MonitorState.message, MonitorState.queueSize, MonitorState.lastTelegramError) { msg, q, err ->
                         listOfNotNull(
@@ -97,17 +93,29 @@ class MonitorFragment : Fragment() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        // Keep the screen (and therefore the camera) on while this screen is shown.
-        requireActivity().window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        if (MonitorState.mode.value != Mode.MONITORING) {
-            requireActivity().window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    /**
+     * Tap on a box: remove it. Tap elsewhere: add a box around the nearest bright spot
+     * (or a default box at the tap if there is none).
+     */
+    private fun onPreviewTapped(x: Float, y: Float) {
+        val current = MonitorState.flames.value
+        val hit = current.indexOfFirst { it.contains(x, y) }
+        val updated = if (hit >= 0) {
+            current.filterIndexed { i, _ -> i != hit }
+        } else {
+            if (current.size >= prefs.expectedFlames) {
+                MonitorState.message.value = "Already ${current.size} flame box(es). Tap a wrong box to remove it first " +
+                    "(or change the number of flames in Settings)."
+                return
+            }
+            val near = MonitorState.blobs.value
+                .map { it to max(abs((it.left + it.right) / 2 - x), abs((it.top + it.bottom) / 2 - y)) }
+                .filter { it.second < TAP_RADIUS }
+                .minByOrNull { it.second }?.first
+            current + (if (near != null) FlameRegion.around(near) else FlameRegion.atTap(x, y))
         }
+        MonitorState.flames.value = FlameRegion.separate(updated)
+        MonitorService.send(requireContext(), MonitorService.ACTION_FLAMES_EDITED)
     }
 
     override fun onDestroyView() {
@@ -117,5 +125,10 @@ class MonitorFragment : Fragment() {
         context?.let { MonitorService.send(it, MonitorService.ACTION_RELEASE) }
         _binding = null
         super.onDestroyView()
+    }
+
+    companion object {
+        /** How close (normalised) a tap must be to a bright spot to snap to it. */
+        private const val TAP_RADIUS = 0.08f
     }
 }
